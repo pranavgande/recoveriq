@@ -219,16 +219,33 @@ export default function PipelineViz({ selected, result, running }) {
               <div className="border-t md:border-t-0 md:border-l border-[#3395FF]/20 pt-3 md:pt-0 md:pl-4">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D2366]">
                   <Zap size={16} className="text-[#F59E0B]" />
-                  <span>Smart Recovery Recommendation</span>
+                  <span>AI Recovery Recommendation</span>
                 </div>
                 <div className="mt-2">
-                  <span className="inline-block text-[11px] font-bold tracking-[0.16em] uppercase px-2.5 py-0.5 rounded-full bg-[#0D2366] text-white">
-                    {result.recommended_strategy.replace(/_/g, " ")}
-                  </span>
-                  <p className="mt-1.5 text-xs text-[#4B5563] leading-relaxed">
-                    {result.strategy_reason}
-                  </p>
-                </div>
+  <div className="text-xs text-[#4B5563] mb-1">
+    AI recommends
+  </div>
+
+  <span className="inline-block text-[11px] font-bold tracking-[0.16em] uppercase px-2.5 py-0.5 rounded-full bg-[#0D2366] text-white">
+    {result.recommended_strategy.replace(/_/g, " ")}
+  </span>
+
+  <p className="mt-1.5 text-xs text-[#4B5563] leading-relaxed">
+    {result.strategy_reason}
+  </p>
+
+  {result.decision?.final_action && (
+    <div className="mt-3 pt-3 border-t border-[#3395FF]/20">
+      <div className="text-xs text-[#4B5563] mb-1">
+        Policy-approved action
+      </div>
+
+      <span className="inline-block text-[11px] font-bold tracking-[0.16em] uppercase px-2.5 py-0.5 rounded-full bg-[#E8F1FF] text-[#0D2366]">
+        {result.decision.final_action.replace(/_/g, " ")}
+      </span>
+    </div>
+  )}
+</div>
               </div>
             )}
           </div>

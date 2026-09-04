@@ -23,15 +23,18 @@ function Header() {
           <div className="w-9 h-9 rounded-xl bg-[#0D2366] flex items-center justify-center text-white">
             <ShieldCheck size={18} />
           </div>
+
           <div>
             <div className="text-[10px] font-bold tracking-[0.22em] text-[#3395FF] uppercase">
-              Razorpay Buildathon
+              RecoverIQ
             </div>
+
             <div className="font-heading font-black text-[#0D2366] text-lg leading-none">
-              Revenue Resilience AI
+              AI Revenue Recovery
             </div>
           </div>
         </div>
+
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4B5563]">
           <a
             href="#pipeline"
@@ -39,9 +42,14 @@ function Header() {
           >
             Pipeline
           </a>
-          <a href="#audit" className="hover:text-[#0D2366] transition-colors">
+
+          <a
+            href="#audit"
+            className="hover:text-[#0D2366] transition-colors"
+          >
             Audit
           </a>
+
           <a
             href="#failures"
             className="hover:text-[#0D2366] transition-colors"
@@ -49,18 +57,21 @@ function Header() {
             Failure Injection
           </a>
         </nav>
+
         <div className="flex items-center gap-3">
           <span className="hidden md:inline-flex items-center gap-1 text-xs font-mono-ui text-[#94A3B8]">
             <span className="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] text-[#10B981]" />{" "}
             backend·healthy
           </span>
+
           <a
             href="https://razorpay.com"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-[#0D2366] text-white hover:bg-[#3395FF] transition-colors"
           >
-            <Github size={12} /> Console v1
+            <Github size={12} />
+            Console v1
           </a>
         </div>
       </div>
@@ -79,38 +90,39 @@ function Hero() {
           className="lg:col-span-6"
         >
           <span className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.22em] uppercase text-[#3395FF] px-3 py-1 rounded-full border border-[#3395FF]/25 bg-[#3395FF]/5">
-            <Activity size={12} /> Live Operator Console
+            <Activity size={12} />
+            Live Operator Console
           </span>
+
           <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-heading font-black tracking-tight text-[#0D2366] leading-[1.02]">
             Recover the revenue
             <br />
             payments quietly lose.
           </h1>
+
           <p className="mt-5 text-[15px] leading-relaxed text-[#4B5563] max-w-xl">
-            A probabilistic{" "}
-            <span className="font-bold text-[#0D2366]">LLM Diagnosis</span>{" "}
-            layer proposes, a deterministic{" "}
-            <span className="font-bold text-[#0D2366]">Policy Gate</span>{" "}
-            approves, and the{" "}
-            <span className="font-bold text-[#0D2366]">Razorpay Executor</span>{" "}
-            acts — all guarded by a WAL-enabled SQLite for strict at-most-once
-            execution.
+            RecoverIQ detects revenue at risk, builds customer context,
+            recommends the safest recovery strategy, and lets deterministic
+            policy controls govern every action.
           </p>
+
           <div className="mt-6 flex flex-wrap gap-3">
             <a
               href="#pipeline"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-[#0D2366] text-white font-bold text-sm hover:bg-[#3395FF] transition-colors"
             >
-              See the pipeline
+              Inspect a recovery
             </a>
+
             <a
               href="#failures"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white text-[#0D2366] font-bold text-sm border border-[#E2E8F0] hover:border-[#3395FF] transition-colors"
             >
-              Prove the guarantees
+              View safety controls
             </a>
           </div>
         </motion.div>
+
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -141,6 +153,7 @@ export default function App() {
         api.executors(),
         api.metrics(),
       ]);
+
       setReservations(r);
       setExecutors(e);
       setMetrics(m);
@@ -151,31 +164,39 @@ export default function App() {
 
   const loadEvents = useCallback(async () => {
     const list = await api.listEvents();
+
     setEvents(list.reverse());
-    if (!selected && list.length) setSelected(list[0]);
+
+    if (!selected && list.length) {
+      setSelected(list[0]);
+    }
   }, [selected]);
 
   useEffect(() => {
     loadEvents();
     refreshState();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const t = setInterval(refreshState, 4000);
+
     return () => clearInterval(t);
   }, [refreshState]);
 
   const runFor = useCallback(
     async (event) => {
       if (!event) return;
+
       setSelected(event);
       setRunning(true);
       setPipelineResult(null);
-      // stagger visuals: reveal stages one-by-one
+
       try {
         const res = await api.runPipeline(event);
-        // simulate stage reveals for wow-effect
+
+        // Stage 1: diagnosis + risk + customer context + strategy
         setPipelineResult({
           diagnosis: res.diagnosis,
           risk: res.risk,
@@ -183,9 +204,18 @@ export default function App() {
           recommended_strategy: res.recommended_strategy,
           strategy_reason: res.strategy_reason,
         });
+
         await new Promise((r) => setTimeout(r, 550));
-        setPipelineResult((p) => ({ ...p, decision: res.decision }));
+
+        // Stage 2: policy decision
+        setPipelineResult((p) => ({
+          ...p,
+          decision: res.decision,
+        }));
+
         await new Promise((r) => setTimeout(r, 550));
+
+        // Stage 3: execution + workflow + trace
         setPipelineResult((p) => ({
           ...p,
           execution: res.execution,
@@ -201,21 +231,29 @@ export default function App() {
   );
 
   const nextEventRef = useRef(null);
+
   nextEventRef.current = async () => {
     const e = await api.newEvent();
+
     setEvents((prev) => [e, ...prev].slice(0, 60));
+
     await runFor(e);
   };
 
   useEffect(() => {
     if (!autoStream) return;
-    const t = setInterval(() => nextEventRef.current?.(), 6000);
+
+    const t = setInterval(() => {
+      nextEventRef.current?.();
+    }, 6000);
+
     return () => clearInterval(t);
   }, [autoStream]);
 
   return (
     <div className="App">
       <Toaster position="top-right" richColors closeButton />
+
       <Header />
       <Hero />
 
@@ -236,6 +274,7 @@ export default function App() {
               onManualNext={() => nextEventRef.current?.()}
             />
           </div>
+
           <div className="lg:col-span-8">
             <PipelineViz
               selected={selected}
@@ -252,24 +291,32 @@ export default function App() {
           <div className="lg:col-span-5">
             <FailurePanel onScenarioComplete={refreshState} />
           </div>
+
           <div className="lg:col-span-7">
             <div className="h-full bg-gradient-to-br from-[#0D2366] to-[#12307a] rounded-2xl p-8 text-white overflow-hidden relative">
               <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-[#3395FF]/25 blur-3xl" />
               <div className="absolute -left-16 -bottom-16 w-72 h-72 rounded-full bg-[#3395FF]/15 blur-3xl" />
+
               <div className="relative">
                 <div className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#A5D0FF]">
-                  Guarantees
+                  Safety Controls
                 </div>
+
                 <h3 className="mt-1 text-3xl font-heading font-black leading-tight">
                   At-most-once execution,
-                  <br /> even under race conditions.
+                  <br />
+                  even under race conditions.
                 </h3>
+
                 <ul className="mt-5 space-y-3 text-sm text-white/85">
                   <li>
-                    <span className="font-bold text-white">Atomic UPSERT</span>{" "}
+                    <span className="font-bold text-white">
+                      Atomic UPSERT
+                    </span>{" "}
                     — pre-claimed PENDING locks in SQLite before the expensive
                     LLM ever runs.
                   </li>
+
                   <li>
                     <span className="font-bold text-white">
                       Deterministic policy gate
@@ -277,12 +324,14 @@ export default function App() {
                     — hard confidence floor + economic thresholds + safety
                     gates.
                   </li>
+
                   <li>
                     <span className="font-bold text-white">
                       WAL journal mode
                     </span>{" "}
                     — durable concurrent readers/writers, zero lost writes.
                   </li>
+
                   <li>
                     <span className="font-bold text-white">
                       Executor idempotency
@@ -306,10 +355,11 @@ export default function App() {
         <footer className="pt-10 border-t border-[#E2E8F0] flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-[#94A3B8]">
           <div>
             <span className="font-heading font-bold text-[#0D2366]">
-              Revenue Resilience AI
+              RecoverIQ
             </span>{" "}
-            · Operator Console — Razorpay Buildathon 2026
+            · AI Revenue Recovery Platform
           </div>
+
           <div className="font-mono-ui">
             idempotency.db · WAL · at-most-once
           </div>

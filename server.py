@@ -280,7 +280,7 @@ def run_pipeline(req: RunPipelineRequest):
         event=event_obj,
         customer_context=cust_ctx,
         risk_result=risk_result,
-        recommended_strategy=strategy_rec.recommended_strategy.value,
+        recommended_strategy=decision,  
         execution_outcome=exec_result["status"],
         workflow_repo=workflow_repo,
     )
