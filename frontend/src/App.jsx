@@ -176,13 +176,20 @@ export default function App() {
       try {
         const res = await api.runPipeline(event);
         // simulate stage reveals for wow-effect
-        setPipelineResult({ diagnosis: res.diagnosis });
+        setPipelineResult({
+          diagnosis: res.diagnosis,
+          risk: res.risk,
+          customer_context: res.customer_context,
+          recommended_strategy: res.recommended_strategy,
+          strategy_reason: res.strategy_reason,
+        });
         await new Promise((r) => setTimeout(r, 550));
         setPipelineResult((p) => ({ ...p, decision: res.decision }));
         await new Promise((r) => setTimeout(r, 550));
         setPipelineResult((p) => ({
           ...p,
           execution: res.execution,
+          workflow: res.workflow,
           trace: res.trace,
         }));
       } finally {

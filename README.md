@@ -52,8 +52,12 @@ flowchart TD
 ### Trust Boundary Matrix
 | Component | Role | Execution Authority |
 | :--- | :--- | :--- |
-| **LLM Agent** | Diagnoses root cause | **None.** Can only output typed strings. |
-| **Policy Engine** | Gating & Decisioning | **Absolute.** Overrides or blocks unsafe proposals. |
+| **Customer Store** | Persistent customer historical profile & analytics | **Deterministic Data Store.** Tracks success rates, recovery attempts, and customer tiers. |
+| **LLM Agent** | Diagnoses root cause with customer context | **None.** Can only output typed diagnostic proposals. |
+| **Revenue Risk Layer** | Quantifies financial loss exposure & recoverability | **Deterministic.** Computes risk score (0-100), risk tier, and est. recoverable amount. |
+| **Smart Recovery Layer** | Recommends optimal recovery strategy | **Deterministic Recommendation.** Recommends SMART_RETRY, PAYMENT_LINK, REMINDER, etc. |
+| **Recovery Workflow Layer** | Multi-step recovery orchestration & outcome tracking | **Deterministic Orchestrator.** Advances workflows through SMART_RETRY → PAYMENT_LINK → REMINDER → HUMAN_ESCALATION. Enforces fraud stops, retry limits, and success detection. Persists every step with auditable outcomes and analytics. |
+| **Policy Engine** | Gating & Decisioning | **Absolute.** Overrides or blocks unsafe proposals & recommendations. |
 | **State Store** | Idempotency & Persistence | **Absolute.** Prevents duplicate execution via WAL locks. |
 | **Executor** | Physical Dispatch | **Execution.** Dispatches physical requests but obeys constraints. |
 | **React UI** | Operator Console | **Read-Only / Trigger.** Cannot propose actions, only invokes pipelines. |

@@ -12,7 +12,7 @@ A real LLM provider integration would enforce the same strict JSON schema bounda
 """
 
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -65,9 +65,14 @@ class RevenueResilienceAgent:
         )
         return [e for e in self.recent_failures if e.timestamp >= cutoff_time]
 
-    def diagnose(self, event: PaymentEvent) -> DiagnosisProposal:
+    def diagnose(
+        self,
+        event: PaymentEvent,
+        customer_context: Optional[Any] = None,
+    ) -> DiagnosisProposal:
         """
-        Takes a PaymentEvent, analyzes it against the context window, and returns a DiagnosisProposal.
+        Takes a PaymentEvent and optional CustomerContext, analyzes it against the context window,
+        and returns a DiagnosisProposal.
         """
         # Get context BEFORE adding the current event
         context = self._get_relevant_context(event)
@@ -82,8 +87,13 @@ class RevenueResilienceAgent:
                     [e.model_dump_json(exclude_none=True) for e in context]
                 )
                 target_str = event.model_dump_json(exclude_none=True)
+                cust_str = (
+                    f"\nCustomer Profile: {customer_context.model_dump_json()}"
+                    if customer_context and hasattr(customer_context, "model_dump_json")
+                    else ""
+                )
 
-                prompt = f"{SYSTEM_PROMPT}\n\nRecent Failures Context:\n{context_str}\n\nTarget Event:\n{target_str}"
+                prompt = f"{SYSTEM_PROMPT}\n\nRecent Failures Context:\n{context_str}\n\nTarget Event:\n{target_str}{cust_str}"
 
                 response = self.client.models.generate_content(
                     model="gemini-2.5-flash",

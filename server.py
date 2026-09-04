@@ -1,4 +1,4 @@
-"""
+﻿"""
 server.py
 
 Trust Boundary: The external API interface (Operator Console backend).
@@ -17,7 +17,7 @@ import time
 import os
 from datetime import datetime, timezone
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,6 +29,10 @@ from policy_engine import PolicyEngine, POLICY_VERSION
 from llm_agent import RevenueResilienceAgent
 from executor import RazorpayExecutor
 from evaluation_harness import policy_agent
+from revenue_risk import calculate_revenue_risk, RevenueRiskResult, RiskLevel
+from customer_context import CustomerContext, CustomerStore, build_customer_context
+from smart_recovery import recommend_recovery_strategy, StrategyRecommendation, RecoveryStrategy
+from recovery_workflow import RecoveryWorkflowRepository, advance_recovery_workflow, RecoveryWorkflow
 
 import milestone7_failure_injection as m7
 
@@ -42,8 +46,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Use configured DB path
-store = IdempotencyRepository(db_path=os.getenv("SQLITE_DB_PATH", "idempotency.db"))
+DB_PATH = os.getenv("SQLITE_DB_PATH", "idempotency.db")
+store = IdempotencyRepository(db_path=DB_PATH)
+customer_store = CustomerStore(db_path=DB_PATH)
+workflow_repo = RecoveryWorkflowRepository(db_path=DB_PATH)
 audit_logger = AuditLogger()
 engine = PolicyEngine(audit_logger=audit_logger, state_store=store)
 agent = RevenueResilienceAgent(use_real_llm=False)
@@ -56,7 +62,6 @@ def read_events(limit=60):
         with open("synthetic_events.jsonl", "r") as f:
             for line in f:
                 data = json.loads(line)
-                # Map raw backend event to UI event shape
                 mapped = {
                     "event_id": data.get("event_id"),
                     "amount_paise": int(float(data.get("amount", 0)) * 100),
@@ -81,7 +86,6 @@ def get_events(limit: int = 60):
 
 @app.post("/api/events/new")
 def new_event():
-    # Inject a new bank degradation event to show the UI
     event = PaymentEvent(
         event_id=str(uuid.uuid4()),
         payment_attempt_group_id=f"group_{uuid.uuid4()}",
@@ -96,12 +100,10 @@ def new_event():
         failure_code=FailureCode.ISSUER_DOWN,
         retry_count=0,
     )
-    # Seed the agent context to detect bank degradation
     for _ in range(3):
         agent.recent_failures.append(
             event.model_copy(update={"event_id": str(uuid.uuid4())})
         )
-
     return {
         "event_id": event.event_id,
         "amount_paise": int(event.amount * 100),
@@ -139,6 +141,43 @@ class ExecutionResponse(BaseModel):
     duplicate_blocked: bool
 
 
+class RevenueRiskResponse(BaseModel):
+    risk_score: float
+    risk_level: str
+    estimated_recoverable_amount: float
+    explanation: str
+    factors: Dict[str, Any] = {}
+
+
+class CustomerContextResponse(BaseModel):
+    customer_id: str
+    total_successful_payments: int
+    total_failed_payments: int
+    historical_success_rate: float
+    previous_recovery_attempts: int
+    average_transaction_value: float
+    recent_failures: List[str] = []
+    customer_tier: str
+
+
+class WorkflowActionResponse(BaseModel):
+    step_number: int
+    action: str
+    timestamp: str
+    result: str
+    recovered_amount: float
+    reason: str
+
+
+class WorkflowResponse(BaseModel):
+    workflow_id: str
+    status: str
+    current_step: int
+    next_action: Optional[str] = None
+    actions_taken: List[WorkflowActionResponse] = []
+    total_recovered_amount: float = 0.0
+
+
 class TraceStep(BaseModel):
     stage: str
     message: str
@@ -148,6 +187,11 @@ class RunPipelineResponse(BaseModel):
     diagnosis: DiagnosisResponse
     decision: DecisionResponse
     execution: ExecutionResponse
+    risk: RevenueRiskResponse
+    customer_context: CustomerContextResponse
+    recommended_strategy: str
+    strategy_reason: str
+    workflow: WorkflowResponse
     trace: List[TraceStep]
 
 
@@ -158,10 +202,8 @@ def run_pipeline(req: RunPipelineRequest):
         raise HTTPException(status_code=400, detail="Missing _raw event data")
 
     event_obj = PaymentEvent(**raw_event)
-
     trace = []
     start_time = time.time()
-
     idempotency_key = f"{event_obj.payment_attempt_group_id}:RECOVERY:{POLICY_VERSION}"
 
     # 1. Orchestrator Pre-claim
@@ -169,11 +211,20 @@ def run_pipeline(req: RunPipelineRequest):
         idempotency_key, "PENDING", "Diagnosing..."
     )
 
+    # 2. Build Customer Context
+    cust_ctx = build_customer_context(event_obj, customer_store=customer_store)
+    trace.append({
+        "stage": "CUSTOMER_CONTEXT",
+        "message": (
+            f"Profile {cust_ctx.customer_id} ({cust_ctx.customer_tier}): "
+            f"{cust_ctx.total_successful_payments} succ / {cust_ctx.total_failed_payments} fail, "
+            f"{int(cust_ctx.historical_success_rate * 100)}% succ rate."
+        ),
+    })
+
     if is_duplicate:
         decision = cached[0] if cached[0] != "PENDING" else "STOP_AND_ESCALATE"
-        # Since it's a duplicate, we mock a dummy proposal just for the trace
         from proposals import DiagnosisProposal, DiagnosisClass
-
         proposal = DiagnosisProposal(
             diagnosis_class=DiagnosisClass.TRANSIENT_TIMEOUT,
             confidence=1.0,
@@ -181,36 +232,62 @@ def run_pipeline(req: RunPipelineRequest):
             evidence_ids=[],
         )
     else:
-        # 2. LLM Diagnosis (Single call)
-        proposal = agent.diagnose(event_obj)
-
-        # 3. Policy Engine Evaluation
+        # 3. LLM Diagnosis
+        proposal = agent.diagnose(event_obj, customer_context=cust_ctx)
+        # 4. Policy Engine
         decision, reason = engine.evaluate(event_obj, proposal)
 
-    # Mocking trace
-    trace.append(
-        {
-            "stage": "ORCHESTRATOR",
-            "message": f"Pre-claim PENDING lock checked. Proceeded to LLM.",
-        }
-    )
-    trace.append(
-        {
-            "stage": "LLM_AGENT",
-            "message": f"Diagnosed as {proposal.diagnosis_class.value}. Confidence {proposal.confidence}.",
-        }
-    )
-    trace.append(
-        {
-            "stage": "POLICY_ENGINE",
-            "message": f"Evaluated rules. Final decision: {decision}",
-        }
-    )
+    trace.append({"stage": "ORCHESTRATOR", "message": "Pre-claim PENDING lock checked. Proceeded to LLM."})
+    trace.append({"stage": "LLM_AGENT", "message": f"Diagnosed as {proposal.diagnosis_class.value}. Confidence {proposal.confidence}."})
+    trace.append({"stage": "POLICY_ENGINE", "message": f"Evaluated rules. Final decision: {decision}"})
 
+    # 5. Revenue Risk Scoring
+    attempt_count = store.get_attempt_count(event_obj.payment_attempt_group_id)
+    risk_result = calculate_revenue_risk(
+        event=event_obj,
+        diagnosis=proposal,
+        attempt_count=attempt_count,
+        customer_history={
+            "is_repeat_customer": cust_ctx.customer_tier in ["RELIABLE_REPEAT", "HIGH_VALUE"],
+            "success_rate": cust_ctx.historical_success_rate,
+        },
+    )
+    trace.append({
+        "stage": "REVENUE_RISK",
+        "message": f"Score {risk_result.risk_score}/100 ({risk_result.risk_level.value}). Est. recoverable: Rs.{float(risk_result.estimated_recoverable_amount):,.2f}.",
+    })
+
+    # 6. Smart Recovery Strategy
+    strategy_rec = recommend_recovery_strategy(
+        event=event_obj,
+        customer_context=cust_ctx,
+        risk_result=risk_result,
+        diagnosis=proposal,
+        attempt_count=attempt_count,
+    )
+    trace.append({
+        "stage": "SMART_RECOVERY",
+        "message": f"Strategy: {strategy_rec.recommended_strategy.value}. Reason: {strategy_rec.strategy_reason}",
+    })
+
+    # 7. Physical Execution
     idempotency_key = f"{event_obj.payment_attempt_group_id}:RECOVERY:{POLICY_VERSION}"
     exec_result = executor.execute(event_obj, decision, idempotency_key)
-
     trace.append({"stage": "EXECUTOR", "message": f"Outcome: {exec_result['status']}."})
+
+    # 8. Advance Recovery Workflow
+    workflow = advance_recovery_workflow(
+        event=event_obj,
+        customer_context=cust_ctx,
+        risk_result=risk_result,
+        recommended_strategy=strategy_rec.recommended_strategy.value,
+        execution_outcome=exec_result["status"],
+        workflow_repo=workflow_repo,
+    )
+    trace.append({
+        "stage": "WORKFLOW",
+        "message": f"Workflow {workflow.workflow_id}: status={workflow.status.value}, step={workflow.current_step}, next={workflow.next_action or 'NONE'}.",
+    })
 
     latency = int((time.time() - start_time) * 1000)
 
@@ -237,7 +314,86 @@ def run_pipeline(req: RunPipelineRequest):
             "latency_ms": latency,
             "duplicate_blocked": exec_result.get("is_duplicate", False),
         },
+        "risk": {
+            "risk_score": risk_result.risk_score,
+            "risk_level": risk_result.risk_level.value,
+            "estimated_recoverable_amount": float(risk_result.estimated_recoverable_amount),
+            "explanation": risk_result.explanation,
+            "factors": risk_result.factors,
+        },
+        "customer_context": {
+            "customer_id": cust_ctx.customer_id,
+            "total_successful_payments": cust_ctx.total_successful_payments,
+            "total_failed_payments": cust_ctx.total_failed_payments,
+            "historical_success_rate": cust_ctx.historical_success_rate,
+            "previous_recovery_attempts": cust_ctx.previous_recovery_attempts,
+            "average_transaction_value": cust_ctx.average_transaction_value,
+            "recent_failures": cust_ctx.recent_failures,
+            "customer_tier": cust_ctx.customer_tier,
+        },
+        "recommended_strategy": strategy_rec.recommended_strategy.value,
+        "strategy_reason": strategy_rec.strategy_reason,
+        "workflow": {
+            "workflow_id": workflow.workflow_id,
+            "status": workflow.status.value,
+            "current_step": workflow.current_step,
+            "next_action": workflow.next_action,
+            "actions_taken": [
+                {
+                    "step_number": a.step_number,
+                    "action": a.action,
+                    "timestamp": a.timestamp,
+                    "result": a.result,
+                    "recovered_amount": a.recovered_amount,
+                    "reason": a.reason,
+                }
+                for a in workflow.actions_taken
+            ],
+            "total_recovered_amount": workflow.total_recovered_amount,
+        },
         "trace": trace,
+    }
+
+
+@app.get("/api/workflow/{workflow_id}")
+def get_workflow(workflow_id: str):
+    """Fetch a single workflow by its ID."""
+    wf = workflow_repo.get_workflow(workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return {
+        "workflow_id": wf.workflow_id,
+        "payment_attempt_group_id": wf.payment_attempt_group_id,
+        "status": wf.status.value,
+        "current_step": wf.current_step,
+        "next_action": wf.next_action,
+        "created_at": wf.created_at,
+        "updated_at": wf.updated_at,
+        "total_at_risk": wf.total_at_risk,
+        "total_recovered_amount": wf.total_recovered_amount,
+        "actions_taken": [a.model_dump() for a in wf.actions_taken],
+    }
+
+
+@app.get("/api/workflows")
+def list_workflows(limit: int = 20):
+    """List the most recent recovery workflows."""
+    workflows = workflow_repo.list_recent_workflows(limit=limit)
+    return {
+        "workflows": [
+            {
+                "workflow_id": wf.workflow_id,
+                "payment_attempt_group_id": wf.payment_attempt_group_id,
+                "status": wf.status.value,
+                "current_step": wf.current_step,
+                "next_action": wf.next_action,
+                "total_recovered_amount": wf.total_recovered_amount,
+                "total_at_risk": wf.total_at_risk,
+                "updated_at": wf.updated_at,
+                "actions_taken": [a.model_dump() for a in wf.actions_taken],
+            }
+            for wf in workflows
+        ]
     }
 
 
@@ -249,16 +405,14 @@ def get_reservations():
     )
     rows = []
     for r in c:
-        rows.append(
-            {
-                "reservation_id": r[0],
-                "event_id": r[0].split(":")[0],
-                "action": r[1],
-                "status": r[1],
-                "worker_id": "worker-1",
-                "claimed_at": r[3],
-            }
-        )
+        rows.append({
+            "reservation_id": r[0],
+            "event_id": r[0].split(":")[0],
+            "action": r[1],
+            "status": r[1],
+            "worker_id": "worker-1",
+            "claimed_at": r[3],
+        })
     return {"rows": rows}
 
 
@@ -270,30 +424,38 @@ def get_executors():
     )
     rows = []
     for r in c:
-        rows.append(
-            {
-                "execution_id": r[0].split(":")[0],
-                "reservation_id": r[0],
-                "razorpay_ref": r[3],
-                "outcome": r[1],
-                "amount_paise": r[4],
-                "latency_ms": r[5],
-                "created_at": r[6],
-            }
-        )
+        rows.append({
+            "execution_id": r[0].split(":")[0],
+            "reservation_id": r[0],
+            "razorpay_ref": r[3],
+            "outcome": r[1],
+            "amount_paise": r[4],
+            "latency_ms": r[5],
+            "created_at": r[6],
+        })
     return {"rows": rows}
 
 
 @app.get("/api/metrics")
 def get_metrics():
-    # Return mock KPIs for the UI demo based on the local run
+    """Return KPIs combining static demo numbers with live workflow analytics."""
+    analytics = workflow_repo.get_outcome_analytics()
     return {
         "recovered_revenue_paise": 4850000,
         "success_rate": 84,
         "total_events_processed": 6000,
-        "escalated": 12,
+        "escalated": analytics.get("number_of_escalations", 12),
         "duplicate_blocked": 19,
         "avg_latency_ms": 145,
+        "workflow_total_at_risk": analytics.get("total_at_risk", 0.0),
+        "workflow_total_recovered": analytics.get("total_recovered", 0.0),
+        "workflow_recovery_rate": analytics.get("recovery_rate", 0.0),
+        "workflow_total_count": analytics.get("total_workflows", 0),
+        "workflow_recovered_count": analytics.get("recovered_count", 0),
+        "workflow_escalated_count": analytics.get("number_of_escalations", 0),
+        "workflow_stopped_count": analytics.get("number_of_stopped_workflows", 0),
+        "workflow_exhausted_count": analytics.get("number_of_exhausted_workflows", 0),
+        "recovered_by_strategy": analytics.get("recovered_by_strategy", {}),
     }
 
 
@@ -324,5 +486,4 @@ def run_duplicate():
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
