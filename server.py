@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+from dotenv import load_dotenv
+load_dotenv()
 
 load_dotenv()
 
@@ -52,7 +54,7 @@ customer_store = CustomerStore(db_path=DB_PATH)
 workflow_repo = RecoveryWorkflowRepository(db_path=DB_PATH)
 audit_logger = AuditLogger()
 engine = PolicyEngine(audit_logger=audit_logger, state_store=store)
-agent = RevenueResilienceAgent(use_real_llm=False)
+agent = RevenueResilienceAgent(use_real_llm=True)
 executor = RazorpayExecutor(state_store=store, use_real_sdk=True)
 
 

@@ -1,36 +1,49 @@
 import React, { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Line, Text } from "@react-three/drei";
+import { Line, Text } from "@react-three/drei";
 import * as THREE from "three";
 
 function Node({ position, label, activeSeed = 0 }) {
   const mesh = useRef();
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() + activeSeed;
+
     if (mesh.current) {
-      mesh.current.position.y = position[1] + Math.sin(t * 1.4) * 0.08;
-      mesh.current.material.emissiveIntensity = 1.2 + Math.sin(t * 2) * 0.6;
+      mesh.current.position.y =
+        position[1] + Math.sin(t * 1.4) * 0.08;
+
+      mesh.current.material.emissiveIntensity =
+        1.1 + Math.sin(t * 2) * 0.35;
     }
   });
+
   return (
     <group position={position}>
       <mesh ref={mesh}>
-        <icosahedronGeometry args={[0.55, 1]} />
+        <icosahedronGeometry args={[0.5, 1]} />
+
         <meshStandardMaterial
           color="#FFFFFF"
           emissive="#3395FF"
-          emissiveIntensity={1.6}
-          metalness={0.3}
-          roughness={0.15}
+          emissiveIntensity={1.2}
+          metalness={0.25}
+          roughness={0.2}
         />
       </mesh>
+
       <mesh>
-        <sphereGeometry args={[0.8, 24, 24]} />
-        <meshBasicMaterial color="#3395FF" transparent opacity={0.06} />
+        <sphereGeometry args={[0.76, 24, 24]} />
+        <meshBasicMaterial
+          color="#3395FF"
+          transparent
+          opacity={0.05}
+        />
       </mesh>
+
       <Text
-        position={[0, -1.05, 0]}
-        fontSize={0.22}
+        position={[0, -1, 0]}
+        fontSize={0.2}
         color="#0D2366"
         anchorX="center"
         anchorY="middle"
@@ -43,17 +56,25 @@ function Node({ position, label, activeSeed = 0 }) {
 
 function FlowLine({ from, to, phase = 0 }) {
   const ref = useRef();
+
   const points = useMemo(() => {
     const start = new THREE.Vector3(...from);
     const end = new THREE.Vector3(...to);
+
     const mid = start.clone().lerp(end, 0.5);
-    mid.y += 0.6;
-    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    mid.y += 0.55;
+
+    const curve = new THREE.QuadraticBezierCurve3(
+      start,
+      mid,
+      end,
+    );
+
     return curve.getPoints(40);
   }, [from, to]);
 
   useFrame(({ clock }) => {
-    if (ref.current) {
+    if (ref.current?.material) {
       const t = (clock.getElapsedTime() + phase) % 1;
       ref.current.material.dashOffset = -t * 2;
     }
@@ -64,30 +85,38 @@ function FlowLine({ from, to, phase = 0 }) {
       ref={ref}
       points={points}
       color="#3395FF"
-      lineWidth={2}
+      lineWidth={1.8}
       dashed
-      dashSize={0.18}
-      gapSize={0.12}
+      dashSize={0.16}
+      gapSize={0.13}
       transparent
-      opacity={0.85}
+      opacity={0.8}
     />
   );
 }
 
-function Particles({ count = 60 }) {
+function Particles({ count = 45 }) {
   const ref = useRef();
+
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
+
     for (let i = 0; i < count; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 10;
-      arr[i * 3 + 1] = (Math.random() - 0.5) * 5;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 6;
+      arr[i * 3] = (Math.random() - 0.5) * 9;
+      arr[i * 3 + 1] = (Math.random() - 0.5) * 4.5;
+      arr[i * 3 + 2] = (Math.random() - 0.5) * 5;
     }
+
     return arr;
   }, [count]);
+
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = clock.getElapsedTime() * 0.06;
+    if (ref.current) {
+      ref.current.rotation.y =
+        clock.getElapsedTime() * 0.045;
+    }
   });
+
   return (
     <points ref={ref}>
       <bufferGeometry>
@@ -98,50 +127,81 @@ function Particles({ count = 60 }) {
           itemSize={3}
         />
       </bufferGeometry>
-      <pointsMaterial color="#3395FF" size={0.05} transparent opacity={0.45} />
+
+      <pointsMaterial
+        color="#3395FF"
+        size={0.045}
+        transparent
+        opacity={0.4}
+      />
     </points>
   );
 }
 
 function Scene() {
-  const llm = [-3.2, 0.4, 0];
-  const policy = [0, 0.4, 0];
-  const executor = [3.2, 0.4, 0];
+  const detect = [-3.1, 0.3, 0];
+  const decide = [0, 0.3, 0];
+  const recover = [3.1, 0.3, 0];
+
   return (
     <>
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[5, 6, 5]} intensity={1.2} />
-      <pointLight position={[-5, 3, 3]} intensity={0.6} color="#3395FF" />
+      <ambientLight intensity={0.75} />
+      <directionalLight
+        position={[5, 6, 5]}
+        intensity={1.1}
+      />
+
+      <pointLight
+        position={[-5, 3, 3]}
+        intensity={0.5}
+        color="#3395FF"
+      />
+
       <Particles />
-      <FlowLine from={llm} to={policy} phase={0} />
-      <FlowLine from={policy} to={executor} phase={0.4} />
-      <Node position={llm} label="LLM DIAGNOSIS" activeSeed={0} />
-      <Node position={policy} label="POLICY GATE" activeSeed={1.6} />
-      <Node position={executor} label="RAZORPAY EXECUTOR" activeSeed={3.2} />
+
+      <FlowLine from={detect} to={decide} />
+      <FlowLine from={decide} to={recover} phase={0.45} />
+
+      <Node
+        position={detect}
+        label="DETECT"
+        activeSeed={0}
+      />
+
+      <Node
+        position={decide}
+        label="PROTECT"
+        activeSeed={1.6}
+      />
+
+      <Node
+        position={recover}
+        label="RECOVER"
+        activeSeed={3.2}
+      />
     </>
   );
 }
 
 export default function Hero3D() {
   return (
-    <div className="w-full h-[420px] lg:h-[520px] relative">
+    <div className="w-full h-[300px] lg:h-[360px] relative">
       <Canvas
-        camera={{ position: [0, 1.6, 7.2], fov: 45 }}
+        camera={{
+          position: [0, 1.3, 7],
+          fov: 45,
+        }}
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
+        gl={{
+          antialias: true,
+          alpha: true,
+        }}
       >
         <Suspense fallback={null}>
           <Scene />
-          <OrbitControls
-            enableZoom={false}
-            enablePan={false}
-            autoRotate
-            autoRotateSpeed={0.6}
-            minPolarAngle={Math.PI / 2.6}
-            maxPolarAngle={Math.PI / 1.9}
-          />
         </Suspense>
       </Canvas>
+
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
     </div>
   );

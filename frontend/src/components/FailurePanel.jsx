@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { Zap, GitFork, TimerReset, Copy } from "lucide-react";
+import { CheckCircle2, Copy, GitFork, TimerReset, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 
@@ -8,24 +8,24 @@ const scenarios = [
   {
     key: "concurrent",
     icon: GitFork,
-    title: "Concurrent Webhooks",
-    proof: "SQLite atomic UPSERT elects exactly one winner",
+    title: "Concurrent webhooks",
+    proof: "Atomic UPSERT elects one winner.",
     action: api.failure.concurrent,
     testId: "trigger-concurrent",
   },
   {
     key: "stale",
     icon: TimerReset,
-    title: "Stale Reservation",
-    proof: "Crashed worker → next attempt STOP_AND_ESCALATE",
+    title: "Stale reservation",
+    proof: "Crashed worker safely degrades.",
     action: api.failure.stale,
     testId: "trigger-stale",
   },
   {
     key: "duplicate",
     icon: Copy,
-    title: "Duplicate Executor Call",
-    proof: "PK constraint blocks 2nd write · at-most-once",
+    title: "Duplicate executor",
+    proof: "Persistent PK blocks a second write.",
     action: api.failure.duplicate,
     testId: "trigger-duplicate",
   },
@@ -35,17 +35,15 @@ export default function FailurePanel({ onScenarioComplete }) {
   const [busyKey, setBusyKey] = useState(null);
   const [lastResult, setLastResult] = useState(null);
 
-  const run = async (s) => {
-    setBusyKey(s.key);
+  const run = async (scenario) => {
+    setBusyKey(scenario.key);
     try {
-      const res = await s.action();
-      setLastResult({ scenario: s.title, ...res });
-      toast.success(`${s.title} → scenario proven`, {
-        description: res.explanation,
-      });
+      const result = await scenario.action();
+      setLastResult({ scenario: scenario.title, ...result });
+      toast.success("Control proven", { description: result.explanation });
       onScenarioComplete?.();
-    } catch (e) {
-      toast.error(`Failed: ${s.title}`);
+    } catch {
+      toast.error(`Failed: ${scenario.title}`);
     } finally {
       setBusyKey(null);
     }
@@ -53,48 +51,53 @@ export default function FailurePanel({ onScenarioComplete }) {
 
   return (
     <section
-      className="bg-white border border-[#E2E8F0] rounded-2xl p-6"
+      className="rounded-2xl border border-slate-200 bg-white"
       data-testid="failure-panel"
     >
-      <div className="flex items-center gap-2 mb-1">
-        <Zap size={14} className="text-[#3395FF]" />
-        <span className="text-[10px] font-bold tracking-[0.22em] text-[#3395FF] uppercase">
-          Failure Injection
-        </span>
+      <div className="border-b border-slate-200 px-5 py-4">
+        <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+          <Zap size={12} className="text-[#3395FF]" />
+          Live controls
+        </div>
+        <h3 className="mt-1 font-heading text-lg font-black text-[#0D2366]">
+          Prove the safety layer
+        </h3>
+        <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-400">
+          Run scripted resilience scenarios against the same persistent state used by
+          the recovery pipeline.
+        </p>
       </div>
-      <h3 className="text-xl font-heading font-bold text-[#0D2366]">
-        Prove the guarantees, live.
-      </h3>
-      <p className="text-sm text-[#4B5563] mt-1">
-        Each button triggers a real scripted scenario against SQLite{" "}
-        <span className="font-mono-ui">idempotency.db</span>.
-      </p>
 
-      <div className="mt-5 space-y-3">
-        {scenarios.map((s) => {
-          const Icon = s.icon;
-          const busy = busyKey === s.key;
+      <div className="grid gap-3 p-4 md:grid-cols-3">
+        {scenarios.map((scenario) => {
+          const Icon = scenario.icon;
+          const busy = busyKey === scenario.key;
           return (
             <motion.button
-              key={s.key}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.98 }}
+              key={scenario.key}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => run(scenario)}
               disabled={busy}
-              onClick={() => run(s)}
-              className="w-full text-left bg-[#0D2366] hover:bg-[#3395FF] transition-colors text-white rounded-xl p-4 flex items-start gap-3 disabled:opacity-70 disabled:cursor-not-allowed hover:shadow-[0_10px_30px_-10px_rgba(51,149,255,0.55)]"
-              data-testid={s.testId}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/40 disabled:cursor-wait disabled:opacity-60"
+              data-testid={scenario.testId}
             >
-              <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
-                <Icon size={18} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-heading font-bold">{s.title}</span>
-                  <span className="text-[10px] font-bold tracking-[0.18em] uppercase opacity-80">
-                    {busy ? "Running…" : "Trigger"}
-                  </span>
+              <div className="flex items-center justify-between">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#0D2366] shadow-sm ring-1 ring-slate-200">
+                  <Icon size={15} />
                 </div>
-                <p className="text-xs mt-1 opacity-80">{s.proof}</p>
+                {busy && (
+                  <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-blue-600">
+                    Running
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 text-xs font-bold text-[#0D2366]">
+                {scenario.title}
+              </div>
+              <div className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                {scenario.proof}
               </div>
             </motion.button>
           );
@@ -102,20 +105,21 @@ export default function FailurePanel({ onScenarioComplete }) {
       </div>
 
       {lastResult && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4"
-          data-testid="scenario-output"
-        >
-          <div className="text-[10px] font-bold tracking-[0.22em] text-[#94A3B8] uppercase mb-1">
-            Latest outcome — {lastResult.scenario}
+        <div className="border-t border-slate-200 px-5 py-4" data-testid="scenario-output">
+          <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-600">
+            <CheckCircle2 size={12} />
+            Latest control result
           </div>
-          <div className="text-xs text-[#4B5563]">{lastResult.explanation}</div>
-          <pre className="mt-3 text-[10px] font-mono-ui text-[#0D2366] whitespace-pre-wrap max-h-40 overflow-auto scroll-thin">
+          <div className="mt-2 text-xs font-semibold text-[#0D2366]">
+            {lastResult.scenario}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            {lastResult.explanation}
+          </p>
+          <pre className="mt-3 max-h-36 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-[9px] leading-relaxed text-slate-200 scroll-thin">
             {JSON.stringify(lastResult, null, 2)}
           </pre>
-        </motion.div>
+        </div>
       )}
     </section>
   );

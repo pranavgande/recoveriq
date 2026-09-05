@@ -1,10 +1,7 @@
-/**
+﻿/**
  * api.jsx
  *
- * Trust Boundary: The typed client contract between the React frontend and the FastAPI backend.
- * Responsibility: Maps UI actions to strict API endpoints.
- * Invariant: The frontend must NEVER propose an action to the backend. It only passes raw events
- * for diagnosis, and the backend handles all deterministic decisions.
+ * RecoverIQ API Client
  */
 import axios from "axios";
 
@@ -12,10 +9,10 @@ const BACKEND_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 export const API = `${BACKEND_URL}/api`;
 
-const client = axios.create({ baseURL: API, timeout: 20000 });
+const client = axios.create({ baseURL: API, timeout: 25000 });
 
 export const api = {
-  listEvents: () => client.get(`/events?limit=60`).then((r) => r.data.events),
+  listEvents: (limit = 60) => client.get(`/events?limit=${limit}`).then((r) => r.data.events),
   newEvent: () => client.post(`/events/new`).then((r) => r.data),
   runPipeline: (event) =>
     client.post(`/pipeline/run`, { event }).then((r) => r.data),
@@ -23,6 +20,8 @@ export const api = {
     client.get(`/state/reservations`).then((r) => r.data.rows),
   executors: () => client.get(`/state/executors`).then((r) => r.data.rows),
   metrics: () => client.get(`/metrics`).then((r) => r.data),
+  workflows: (limit = 20) => client.get(`/workflows?limit=${limit}`).then((r) => r.data.workflows),
+  workflow: (id) => client.get(`/workflow/${id}`).then((r) => r.data),
   reset: () => client.post(`/state/reset`).then((r) => r.data),
   failure: {
     concurrent: () =>
@@ -33,13 +32,21 @@ export const api = {
   },
 };
 
-export const fmtINR = (paise) => {
-  const rupees = (paise || 0) / 100;
+export const fmtINR = (amountOrPaise, isPaise = true) => {
+  const rupees = isPaise ? (amountOrPaise || 0) / 100 : (amountOrPaise || 0);
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(rupees);
+};
+
+export const fmtINRRaw = (rupees) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(rupees || 0);
 };
 
 export const shortId = (s, n = 10) =>
@@ -52,5 +59,5 @@ export const timeAgo = (iso) => {
   if (sec < 60) return `${sec}s ago`;
   if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
   if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
-  return d.toLocaleString();
+  return d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 };
