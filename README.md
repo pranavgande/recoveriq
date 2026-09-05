@@ -37,7 +37,11 @@ The central design principle is simple:
 The model does not receive unrestricted authority over financial actions.
 
 ---
+### The Architecture
 
+![Uploading architecture diagram.png…]()
+
+---
 ## The Problem
 
 When a payment fails, a merchant needs to answer four questions quickly:
