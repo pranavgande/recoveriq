@@ -2,6 +2,7 @@
 .env
 venv/
 .venv/
+.env_example
 
 # Python
 *.pyc
