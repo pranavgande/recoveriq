@@ -1,4 +1,4 @@
-<div align="center">
+<img width="1536" height="1024" alt="architecture diagram" src="https://github.com/user-attachments/assets/397d96d8-4a07-47c7-8e08-ba1e6ab3e395" /><div align="center">
 
 # RecoverIQ — AI Revenue Recovery
 
@@ -37,9 +37,9 @@ The central design principle is simple:
 The model does not receive unrestricted authority over financial actions.
 
 ---
-### The Architecture
+## Architecture
 
-![Uploading architecture diagram.png…]()
+![RecoverIQ Architecture](architecture/architecture.png)
 
 ---
 ## The Problem
